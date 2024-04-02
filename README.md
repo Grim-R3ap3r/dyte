@@ -1,6 +1,16 @@
 ## Screenshot of the results attached
 ![image](https://github.com/Grim-R3ap3r/dyte/assets/62543734/4130bfa1-4080-4774-b1e6-11d1d22c166c)
 
+### Description of the solution
+- ✅ Buffer Pooling: Instead of allocating a new buffer for each write operation, buffers are obtained from the pool and returned after use. This reduces the overhead of memory allocation and garbage collection.
+- ✅ Parallelization: Write operations are parallelized across multiple goroutines, allowing for concurrent writing to each port. This leverages the concurrency features of Go to maximize throughput.
+- ✅ Minimized Synchronization: Synchronization is minimized by using channels and wait groups to coordinate the completion of write operations. Goroutines communicate through channels to signal when they have finished writing, and a wait group is used to ensure all goroutines have completed before proceeding.
+- ✅ Reuse of UDP connections: UDP connections are reused within each goroutine to avoid the overhead of establishing new connections for each write operation. This reduces the latency associated with connection setup and teardown.
+
+### Trade-offs
+- ✅ Resource Utilization: By parallelizing write operations and reusing UDP connections, the solution may consume more system resources, such as CPU and memory. 
+- ✅ Potential for Resource Contentions: With increased parallelism, there is a higher potential for resource contentions, such as contention for access to the buffer pool or contention for network resources. This could potentially lead to performance degradation under high load or in multi-threaded environments.
+
 
 
 # UDP Network Writer Challenge
