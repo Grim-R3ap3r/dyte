@@ -179,84 +179,76 @@ func BenchmarkRawUDP(b *testing.B) {
 	close(closeChan)
 }
 
-// Implement your benchmarks here -->
-// Please read the comments carefully. You need to implement something atleast much faster than the baseline
+
 func BenchmarkSample(b *testing.B) {
-    b.StopTimer()
+	b.StopTimer()
 
-    // Initialize ports, readChan, and closeChan
-    ports, readChan, closeChan, err := testInit(readersCount, false)
-    if err != nil {
-        b.Fatal(err)
-    }
-    defer close(closeChan)
+	// Do something here
 
-    // Create a pool of reusable buffers
-    bufPool := sync.Pool{
-        New: func() interface{} {
-            return make([]byte, 1500)
-        },
-    }
+	ports, readChan, closeChan, err := testInit(readersCount, false) // DO NOT EDIT THIS LINE
+	if err != nil {
+		b.Fatal(err)
+	}
+	_ = readChan
 
-    // Channel to signal completion of write operations
-    done := make(chan struct{}, readersCount)
+	// Preallocating UDP connections
+	conns := make([]*net.UDPConn, readersCount)
+	for i := 0; i < readersCount; i++ {
+		conn, err := net.DialUDP("udp", nil, &net.UDPAddr{
+			IP:   net.IPv4(127, 0, 0, 1),
+			Port: ports[i],
+		})
+		if err != nil {
+			b.Fatalf("Failed to dial UDP: %v", err)
+		}
+		defer conn.Close()
+		conns[i] = conn
+	}
 
-    // Parallelized writing to each port
-    var wg sync.WaitGroup
-    wg.Add(readersCount)
-    for i := 0; i < readersCount; i++ {
-        go func(port int) {
-            defer func() {
-                done <- struct{}{}
-                wg.Done()
-            }()
+	// Using a shared buffer for writing data
+	buffer := getTestMsg()
 
-            // Get buffer from the pool
-            buf := bufPool.Get().([]byte)
-            defer bufPool.Put(buf)
+	writer := func() {
+		// You can modify the following code inside this function
+		// Start of code that you are permitted to modify
+		var (
+			wg     sync.WaitGroup
+			mu     sync.Mutex
+			errors []error
+		)
 
-            // Create a UDP connection for writing
-            conn, err := net.DialUDP("udp", nil, &net.UDPAddr{
-                IP:   net.IPv4(127, 0, 0, 1),
-                Port: ports[port],
-            })
-            if err != nil {
-                b.Fatalf("failed to dial UDP: %v", err)
-            }
-            defer conn.Close()
+		wg.Add(readersCount)
 
-            // Perform write operations
-            for i := 0; i < b.N; i++ {
-                // Generate test message
-                rand.Read(buf)
+		// Write data concurrently to UDP connections
+		for i := 0; i < readersCount; i++ {
+			go func(i int) {
+				defer wg.Done()
+				_, err := conns[i].Write(buffer)
+				if err != nil {
+					mu.Lock()
+					errors = append(errors, err)
+					mu.Unlock()
+				}
+			}(i)
+		}
 
-                // Write message to the port
-                _, err := conn.Write(buf)
-                if err != nil {
-                    b.Fatalf("failed to write to port %d: %v", ports[port], err)
-                }
-            }
-        }(i)
-    }
+		wg.Wait()
 
-    // Start the timer
-    b.StartTimer()
+		
+		if len(errors) > 0 {
+			b.Fatalf("Encountered %d errors during writing", len(errors))
+		}
 
-    // Wait for all write operations to complete
-    go func() {
-        wg.Wait()
-        close(done)
-    }()
+		// End of code that you are permitted to modify
+		waitForReaders(readChan, b) // DO NOT EDIT THIS LINE
+	}
 
-    // Wait for completion of all write operations
-    for range done {
-    }
+	// Sequential test
+	b.StartTimer()
+	for i := 0; i < b.N; i++ {
+		writer()
+	}
+	b.StopTimer()
 
-    // Stop the timer
-    b.StopTimer()
-
-    // Wait for readers to read all messages
-    for i := 0; i < readersCount; i++ {
-        <-readChan
-    }
+	close(closeChan)
 }
